@@ -1,0 +1,34 @@
+# Unpublished research notes (internal only)
+research/
+
+# Rust build artifacts (long paths disabled on this machine — external target dirs)
+target/
+app/target/
+app/frontend/src-tauri/target/
+app/sadacam/target/
+sada-target*/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.log
+
+# Env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Model downloads live in app-data, not the repo
+*.gguf
+*.bin
+*.onnx
+!app/frontend/src-tauri/binaries/onnxruntime/*.dll
+temp.env
+tools/vulkan-sdk.exe
+app/frontend/vs_buildtools.exe
