@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Info, Mic, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
@@ -48,12 +48,25 @@ export function SetupOverviewStep() {
       title="Setup Overview"
       description="SadaCraft requires that you download the Transcription & Summarization AI models for the software to work."
       step={2}
-      totalSteps={isMac ? 4 : 3}
+      totalSteps={isMac ? 5 : 4}
     >
       <div className="flex flex-col items-center space-y-10">
         {/* Steps Card */}
         <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-4">
           <div className="space-y-4">
+            {/* How SadaCraft hears the meeting */}
+            <div className="flex items-start gap-3 pb-1 border-b border-gray-100">
+              <div className="flex items-center gap-1 mt-0.5 flex-shrink-0">
+                <Mic className="w-4 h-4 text-gray-500" />
+                <Volume2 className="w-4 h-4 text-gray-500" />
+              </div>
+              <p className="text-sm text-gray-600">
+                SadaCraft captures your microphone and your system audio
+                (loopback) so both you and remote participants are transcribed.
+                Everything is processed on this device.
+              </p>
+            </div>
+
             {steps.map((step, idx) => {
               return (
                 <div

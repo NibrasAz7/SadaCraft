@@ -595,7 +595,7 @@ impl SummaryService {
                     &pool,
                     &meeting_id,
                     started_at,
-                    result_json,
+                    result_json.clone(),
                     generated.successful_chunk_count,
                     duration,
                 )
@@ -613,6 +613,13 @@ impl SummaryService {
                                 error!("Failed to update meeting name for {}: {}", meeting_id, error);
                             }
                         }
+                        crate::summary::webhook::notify_summary_complete(
+                            app_data_dir.as_ref(),
+                            &meeting_id,
+                            extract_meeting_name_from_markdown(&generated.final_markdown),
+                            duration,
+                            result_json,
+                        );
                         info!("Summary saved successfully for meeting_id: {}", meeting_id);
                     }
                     Ok(false) => warn!("Skipped stale summary completion for meeting_id: {}", meeting_id),

@@ -1,5 +1,6 @@
 use crate::summary::llm_client::{generate_summary, LLMProvider};
 use crate::summary::templates::Template;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client;

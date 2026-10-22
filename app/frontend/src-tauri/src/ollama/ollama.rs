@@ -15,6 +15,12 @@ static DOWNLOADING_MODELS: Lazy<Arc<RwLock<HashSet<String>>>> = Lazy::new(|| {
     Arc::new(RwLock::new(HashSet::new()))
 });
 
+// Global set of models whose downloads have been cancelled. The pull loop
+// checks this cooperatively and aborts the stream on the next chunk.
+static CANCELLED_MODELS: Lazy<Arc<RwLock<HashSet<String>>>> = Lazy::new(|| {
+    Arc::new(RwLock::new(HashSet::new()))
+});
+
 // Global cache for model metadata (5 minute TTL)
 static METADATA_CACHE: Lazy<ModelMetadataCache> = Lazy::new(|| {
     ModelMetadataCache::new(Duration::from_secs(300))
@@ -278,6 +284,12 @@ pub async fn pull_ollama_model<R: Runtime>(
         log::info!("Started download tracking for model: {}", model_name);
     }
 
+    // Clear any stale cancellation flag for this model
+    {
+        let mut cancelled = CANCELLED_MODELS.write().await;
+        cancelled.remove(&model_name);
+    }
+
     let client = Client::new();
     let base_url = endpoint.as_deref().unwrap_or("http://localhost:11434");
     let url = format!("{}/api/pull", base_url);
@@ -307,10 +319,14 @@ pub async fn pull_ollama_model<R: Runtime>(
         let status = response.status();
         let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
 
-        // Remove from downloading set on error
+        // Remove from downloading and cancelled sets on error
         {
             let mut downloading = DOWNLOADING_MODELS.write().await;
             downloading.remove(&model_name);
+        }
+        {
+            let mut cancelled = CANCELLED_MODELS.write().await;
+            cancelled.remove(&model_name);
         }
 
         // Emit error event
@@ -331,6 +347,32 @@ pub async fn pull_ollama_model<R: Runtime>(
     let mut last_progress = 0u8;
 
     while let Some(chunk) = stream.next().await {
+        // Cooperative cancellation: dropping the response stream aborts the
+        // HTTP pull, which makes the Ollama daemon stop the pull server-side.
+        if CANCELLED_MODELS.read().await.contains(&model_name) {
+            log::info!("Ollama model {} download cancelled by user", model_name);
+
+            {
+                let mut downloading = DOWNLOADING_MODELS.write().await;
+                downloading.remove(&model_name);
+            }
+            {
+                let mut cancelled = CANCELLED_MODELS.write().await;
+                cancelled.remove(&model_name);
+            }
+
+            let _ = app_handle.emit(
+                "ollama-model-download-cancelled",
+                serde_json::json!({
+                    "modelName": model_name
+                }),
+            );
+
+            // Resolve Ok like the whisper engine does for cancellations; the
+            // cancelled event above is the authoritative signal for the UI.
+            return Ok(());
+        }
+
         let chunk = chunk.map_err(|e| {
             let error_msg = format!("Failed to read stream: {}", e);
 
@@ -418,6 +460,10 @@ pub async fn pull_ollama_model<R: Runtime>(
         downloading.remove(&model_name);
         log::info!("Removed {} from downloading set", model_name);
     }
+    {
+        let mut cancelled = CANCELLED_MODELS.write().await;
+        cancelled.remove(&model_name);
+    }
 
     // Emit completion event
     let _ = app_handle.emit(
@@ -428,6 +474,30 @@ pub async fn pull_ollama_model<R: Runtime>(
     );
 
     log::info!("Ollama model {} downloaded successfully", model_name);
+
+    Ok(())
+}
+
+/// Request cancellation of an in-progress Ollama model pull.
+///
+/// Idempotent: returns Ok when no download is in flight for `model_name`.
+/// The pull loop in `pull_ollama_model` observes the flag on the next chunk
+/// and emits `ollama-model-download-cancelled` before resolving.
+#[command]
+pub async fn cancel_ollama_download(model_name: String) -> Result<(), String> {
+    let is_downloading = {
+        let downloading = DOWNLOADING_MODELS.read().await;
+        downloading.contains(&model_name)
+    };
+
+    if !is_downloading {
+        log::info!("Cancel requested for {} but no download is in progress", model_name);
+        return Ok(());
+    }
+
+    let mut cancelled = CANCELLED_MODELS.write().await;
+    cancelled.insert(model_name.clone());
+    log::info!("Cancellation requested for Ollama model download: {}", model_name);
 
     Ok(())
 }

@@ -42,6 +42,7 @@ pub mod config;
 pub mod console_utils;
 pub mod database;
 pub mod export;
+pub mod meeting_detect;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -596,6 +597,9 @@ pub fn run() {
                 log::warn!("Failed to resolve resource directory for templates");
             }
 
+            // Meeting auto-detection monitor (no-op unless enabled in settings)
+            meeting_detect::MeetingDetector::spawn(_app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -708,6 +712,7 @@ pub fn run() {
             console_utils::toggle_console,
             ollama::get_ollama_models,
             ollama::pull_ollama_model,
+            ollama::cancel_ollama_download,
             ollama::delete_ollama_model,
             ollama::get_ollama_model_context,
             openai::openai::get_openai_models,
@@ -751,10 +756,29 @@ pub fn run() {
             summary::commands::api_save_meeting_detected_summary_language,
             summary::commands::api_detect_transcript_summary_language,
             summary::commands::api_cancel_summary,
+            // Ask-your-meeting chat
+            summary::chat::ask_meeting,
             // Template commands
             summary::template_commands::api_list_templates,
             summary::template_commands::api_get_template_details,
             summary::template_commands::api_validate_template,
+            summary::template_commands::api_get_template_content,
+            summary::template_commands::api_create_template,
+            summary::template_commands::api_update_template,
+            summary::template_commands::api_delete_template,
+            // Speaker stats + rename
+            database::speaker_commands::api_get_meeting_speakers,
+            database::speaker_commands::rename_speaker,
+            // In-meeting bookmarks + slide capture
+            database::bookmark_commands::add_bookmark,
+            database::bookmark_commands::list_bookmarks,
+            database::bookmark_commands::list_pending_bookmarks,
+            database::bookmark_commands::finalize_pending_bookmarks,
+            database::bookmark_commands::delete_bookmark,
+            database::bookmark_commands::capture_frame_note,
+            // Meeting auto-detection toggle
+            meeting_detect::api_get_meeting_autodetect_enabled,
+            meeting_detect::api_set_meeting_autodetect_enabled,
             // Summary self-improvement commands
             summary::self_improve_commands::api_get_summary_self_improve_enabled,
             summary::self_improve_commands::api_set_summary_self_improve_enabled,

@@ -12,6 +12,7 @@ windows-core = "0.62"
 windows = { version = "0.62", features = [
     "Win32_Media_MediaFoundation",
     "Win32_Media_KernelStreaming",
+    "Win32_Networking_WinInet",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Variant",
@@ -23,3 +24,10 @@ windows = { version = "0.62", features = [
     "Win32_Security_Authorization",
     "Win32_Foundation",
 ] }
+serde_json = "1.0"
+ndarray = "0.16"
+# ONNX Runtime, dynamically loaded at runtime (mirrors the src-tauri crate:
+# same version, load-dynamic so no binaries are fetched at build time and the
+# onnxruntime.dll path is supplied to ort::init_from when --segmentation runs).
+# Only the CLI producer exercises this; the COM DLL never initializes ort.
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["load-dynamic", "ndarray"] }

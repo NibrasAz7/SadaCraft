@@ -151,6 +151,35 @@ export function DownloadProgressStep() {
     }
   };
 
+  // Cancel download handlers
+  const handleCancelParakeetDownload = async () => {
+    try {
+      await invoke('parakeet_cancel_download', { modelName: PARAKEET_MODEL });
+    } catch (error) {
+      console.error('[DownloadProgressStep] Failed to cancel Parakeet download:', error);
+      toast.error('Could not cancel download');
+    }
+  };
+
+  const handleCancelSummaryDownload = async () => {
+    const modelName = selectedSummaryModel;
+    if (!modelName) return;
+    try {
+      await invoke('builtin_ai_cancel_download', { modelName });
+      setSummaryModelDownloaded(false);
+      setSummaryState((prev) => ({
+        ...prev,
+        status: 'cancelled',
+        progress: 0,
+        downloadedMb: 0,
+        speedMbps: 0,
+      }));
+    } catch (error) {
+      console.error('[DownloadProgressStep] Failed to cancel summary download:', error);
+      toast.error('Could not cancel download');
+    }
+  };
+
   // Detect platform on mount
   useEffect(() => {
     const checkPlatform = async () => {
@@ -272,12 +301,17 @@ export function DownloadProgressStep() {
     }>('builtin-ai-download-progress', (event) => {
       const { model, progress, downloaded_mb, total_mb, speed_mbps, status, error } = event.payload;
       if (selectedSummaryModel && model === selectedSummaryModel) {
+        if (status === 'cancelled') {
+          setSummaryModelDownloaded(false);
+        }
         setSummaryState((prev) => ({
           ...prev,
           status: status === 'completed'
             ? 'completed'
             : status === 'error'
             ? 'error'
+            : status === 'cancelled'
+            ? 'cancelled'
             : 'downloading',
           progress,
           downloadedMb: downloaded_mb ?? prev.downloadedMb,
@@ -404,7 +438,8 @@ export function DownloadProgressStep() {
     icon: React.ReactNode,
     state: DownloadState,
     modelSize: string,
-    sizeUnit = 'MB'
+    sizeUnit = 'MB',
+    onCancel?: () => void
   ) => (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-4">
@@ -462,6 +497,14 @@ export function DownloadProgressStep() {
               </span>
             </div>
           </div>
+          {onCancel && state.status === 'downloading' && (
+            <button
+              onClick={onCancel}
+              className="text-xs text-neutral-500 hover:text-neutral-700 transition-colors self-end"
+            >
+              Cancel download
+            </button>
+          )}
         </div>
       )}
 
@@ -492,8 +535,8 @@ export function DownloadProgressStep() {
     <OnboardingContainer
       title="Getting things ready"
       description="You can start using SadaCraft after downloading the Transcription Engine."
-      step={3}
-      totalSteps={isMac ? 4 : 3}
+      step={4}
+      totalSteps={isMac ? 5 : 4}
     >
       <div className="flex flex-col items-center space-y-6">
         {/* Download Cards */}
@@ -502,7 +545,9 @@ export function DownloadProgressStep() {
             'Transcription Engine',
             <Mic className="w-5 h-5 text-gray-600" />,
             parakeetState,
-            '~670 MB'
+            '~670 MB',
+            'MB',
+            handleCancelParakeetDownload
           )}
 
           {renderDownloadCard(
@@ -510,7 +555,8 @@ export function DownloadProgressStep() {
             <Sparkles className="w-5 h-5 text-gray-600" />,
             summaryState,
             getSummaryModelSizeLabel(selectedSummaryModel || recommendedSummaryModel),
-            'MiB'
+            'MiB',
+            handleCancelSummaryDownload
           )}
         </div>
 

@@ -237,7 +237,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
     console.log('🎨 Rendering BLOCKNOTE format (direct)');
     return (
       <div className="flex flex-col w-full">
-        <div className="w-full">
+        <div className="w-full [&_.bn-block-content]:[unicode-bidi:plaintext]">
           <Editor
             initialContent={data.summary_json}
             onChange={(blocks) => {
@@ -256,7 +256,7 @@ export const BlockNoteSummaryView = forwardRef<BlockNoteSummaryViewRef, BlockNot
     console.log('🎨 Rendering MARKDOWN format (parsed to BlockNote)');
     return (
       <div className="flex flex-col w-full">
-        <div className="w-full">
+        <div className="w-full [&_.bn-block-content]:[unicode-bidi:plaintext]">
           <BlockNoteView
             editor={editor}
             editable={true}

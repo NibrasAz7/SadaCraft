@@ -1,9 +1,12 @@
 #![allow(non_snake_case)]
 
 mod activate;
+pub mod effects;
 pub mod frames;
 pub mod overlay;
 pub mod register;
+pub mod routing;
+pub mod segment;
 pub mod shm;
 mod source;
 mod stream;

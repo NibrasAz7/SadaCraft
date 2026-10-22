@@ -746,6 +746,17 @@ export function ModelSettingsModal({
     }
   };
 
+  // Function to cancel an in-progress Ollama model download
+  const cancelOllamaDownload = async (modelName: string) => {
+    try {
+      await invoke('cancel_ollama_download', { modelName });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to cancel download';
+      toast.error(errorMsg);
+      console.error('Error cancelling download:', err);
+    }
+  };
+
   // Function to delete Ollama model
   const deleteOllamaModel = async (modelName: string) => {
     try {
@@ -1290,6 +1301,14 @@ export function ModelSettingsModal({
                                 style={{ width: `${getProgress('gemma3:1b')}%` }}
                               />
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => cancelOllamaDownload('gemma3:1b')}
+                              className="w-full mt-2 text-muted-foreground"
+                            >
+                              Cancel download
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -1346,6 +1365,17 @@ export function ModelSettingsModal({
                                   style={{ width: `${progress}%` }}
                                 />
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelOllamaDownload(model.name);
+                                }}
+                                className="w-full mt-2 text-muted-foreground"
+                              >
+                                Cancel download
+                              </Button>
                             </div>
                           )}
                         </div>

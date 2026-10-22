@@ -260,6 +260,34 @@ ul {{ margin-top: 4px; }}
     )
 }
 
+/// Render a meeting to Markdown. Shared with the `sadacraft-cli` binary.
+/// `summary_result` is the raw `summary_processes.result` JSON blob.
+pub fn render_meeting_markdown(
+    meeting: &MeetingDetails,
+    summary_result: &Option<String>,
+) -> String {
+    render_markdown(meeting, &parse_summary(summary_result))
+}
+
+/// Render a meeting to a `.docx` file. Shared with the `sadacraft-cli` binary.
+pub fn write_meeting_docx(
+    meeting: &MeetingDetails,
+    summary_result: &Option<String>,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    render_docx(meeting, &parse_summary(summary_result), path)
+}
+
+/// Render a meeting to print-optimized HTML (the app's "PDF" export path —
+/// opened in a browser so the OS print pipeline produces the PDF). Shared
+/// with the `sadacraft-cli` binary.
+pub fn render_meeting_html(
+    meeting: &MeetingDetails,
+    summary_result: &Option<String>,
+) -> String {
+    render_html(meeting, &parse_summary(summary_result))
+}
+
 /// Export a meeting to Markdown (.md), Word (.docx), or PDF (via browser
 /// print of a generated HTML document). Opens a native save dialog;
 /// returns the written path, or `None` if the user cancelled.

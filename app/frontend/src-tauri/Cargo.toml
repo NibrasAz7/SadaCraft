@@ -190,7 +190,8 @@ whisper-rs = { version = "0.16.0", features = ["raw-api", "metal", "coreml"] }
 whisper-rs = { version = "0.16.0", features = ["raw-api"] }
 ort = { version = "2.0.0-rc.10", features = ["load-dynamic"] }
 futures-channel = "0.3.31"
-windows = { version = "0.57", features = ["Win32_Graphics_Dxgi"] }
+windows = { version = "0.57", features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+image = "0.25"
 
 # Linux-specific dependencies
 # Default: CPU-only build (no BLAS)

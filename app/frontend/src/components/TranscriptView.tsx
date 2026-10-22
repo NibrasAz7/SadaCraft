@@ -305,7 +305,7 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                 </TooltipContent>
               </Tooltip>
               {transcript.speaker && (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0 ${
+                <span dir="auto" className={`text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0 ${
                   transcript.speaker === 'You'
                     ? 'bg-blue-100 text-blue-700'
                     : 'bg-emerald-100 text-emerald-700'
@@ -318,10 +318,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                   // Streaming transcript - show in bubble (full width)
                   <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
                     <div className="relative">
-                      <p className="text-base text-gray-800 leading-relaxed" style={{ visibility: 'hidden' }}>
+                      <p dir="auto" className="text-base text-gray-800 leading-relaxed" style={{ visibility: 'hidden' }}>
                         {sizerText}
                       </p>
-                      <p className="text-base text-gray-800 leading-relaxed absolute top-0 left-0">
+                      <p dir="auto" className="text-base text-gray-800 leading-relaxed absolute top-0 left-0 right-0">
                         {displayText}
                       </p>
                     </div>
@@ -329,10 +329,10 @@ export const TranscriptView: React.FC<TranscriptViewProps> = ({ transcripts, isR
                 ) : (
                   // Regular transcript - simple text
                   <div className="relative">
-                    <p className="text-base text-gray-800 leading-relaxed" style={{ visibility: 'hidden' }}>
+                    <p dir="auto" className="text-base text-gray-800 leading-relaxed" style={{ visibility: 'hidden' }}>
                       {sizerText}
                     </p>
-                    <p className="text-base text-gray-800 leading-relaxed absolute top-0 left-0">
+                    <p dir="auto" className="text-base text-gray-800 leading-relaxed absolute top-0 left-0 right-0">
                       {displayText}
                     </p>
                   </div>

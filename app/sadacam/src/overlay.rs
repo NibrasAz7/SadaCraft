@@ -129,3 +129,202 @@ pub fn draw_name_card(frame: &mut [u8], w: usize, h: usize, text: &str) {
         }
     }
 }
+
+// --- M3: subtitle + teleprompter overlays -----------------------------------
+
+/// Which edge a text band hugs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BandPos {
+    Top,
+    Bottom,
+}
+
+const TP_SCALE: usize = 2; // 10x14 glyphs — more columns/lines than name card
+const TP_VISIBLE_LINES: usize = 4;
+const TP_LINE_PAD: usize = 4; // extra px between teleprompter lines
+const TP_PAD_X: usize = 8; // left margin inside the band
+const TP_PAD_Y: usize = 6; // top margin inside the band
+
+/// Alpha-blend `bgr` over a horizontal strip of the frame.
+fn blend_band(frame: &mut [u8], w: usize, top: usize, height: usize, bgr: (u16, u16, u16), a: u16) {
+    let ia = 255 - a;
+    let bottom = (top + height).min(frame.len() / (w * 4).max(1));
+    for y in top..bottom {
+        let row = &mut frame[y * w * 4..(y + 1) * w * 4];
+        for px in row.chunks_exact_mut(4) {
+            px[0] = ((px[0] as u16 * ia + bgr.0 * a) / 255) as u8;
+            px[1] = ((px[1] as u16 * ia + bgr.1 * a) / 255) as u8;
+            px[2] = ((px[2] as u16 * ia + bgr.2 * a) / 255) as u8;
+        }
+    }
+}
+
+/// Draw uppercase `chars` at `scale`, pixels clipped to `clip_top <= y < clip_bot`
+/// (vertical clip lets teleprompter lines scroll inside the band). `y0` may be
+/// negative while a line scrolls out of view.
+fn draw_chars(
+    frame: &mut [u8],
+    w: usize,
+    h: usize,
+    x0: usize,
+    y0: i32,
+    chars: &[u8],
+    scale: usize,
+    clip_top: usize,
+    clip_bot: usize,
+) {
+    let advance = (GW + 1) * scale;
+    for (i, c) in chars.iter().enumerate() {
+        let g = glyph(*c);
+        for (ry, row) in g.iter().enumerate() {
+            for bx in 0..GW {
+                if row & (1 << (GW - 1 - bx)) == 0 {
+                    continue;
+                }
+                for dy in 0..scale {
+                    let y = y0 + (ry * scale + dy) as i32;
+                    if y < clip_top as i32 || y >= clip_bot as i32 {
+                        continue;
+                    }
+                    for dx in 0..scale {
+                        let x = x0 + i * advance + bx * scale + dx;
+                        if x < w && (y as usize) < h {
+                            let d = (y as usize * w + x) * 4;
+                            frame[d] = 0xFF;
+                            frame[d + 1] = 0xFF;
+                            frame[d + 2] = 0xFF;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Single centered subtitle line on a translucent bottom band
+/// (`--subtitle` / `--subtitle-file`). Text longer than the frame is
+/// truncated to fit.
+pub fn draw_subtitle(frame: &mut [u8], w: usize, h: usize, text: &str) {
+    let text_h = GH * SCALE;
+    let band_h = (text_h + 14).min(h);
+    let band_top = h - band_h;
+    blend_band(frame, w, band_top, band_h, (30, 28, 26), 170);
+
+    let advance = (GW + 1) * SCALE;
+    let max_chars = w / advance;
+    let mut chars: Vec<u8> = text.bytes().map(|c| c.to_ascii_uppercase()).collect();
+    chars.truncate(max_chars);
+    if chars.is_empty() {
+        return;
+    }
+    let x0 = (w - chars.len() * advance) / 2;
+    let y0 = (band_top + (band_h - text_h) / 2) as i32;
+    draw_chars(frame, w, h, x0, y0, &chars, SCALE, 0, h);
+}
+
+/// Word-wrapped scrolling text (`--teleprompter`). Holds the wrapped lines;
+/// `draw` renders the window of lines at `scroll_px` inside a translucent
+/// top or bottom band. Scroll is clamped so the last line stops visible.
+pub struct Teleprompter {
+    lines: Vec<String>,
+}
+
+impl Teleprompter {
+    /// Wrap `text` to the columns that fit `frame_w` at the teleprompter
+    /// glyph scale (word wrap; overlong words are hard-split).
+    pub fn from_text(text: &str, frame_w: usize) -> Self {
+        let advance = (GW + 1) * TP_SCALE;
+        let cpl = ((frame_w - 2 * TP_PAD_X) / advance).max(8);
+        let mut lines = Vec::new();
+        for raw in text.lines() {
+            let mut cur = String::new();
+            for word in raw.split_whitespace() {
+                if cur.is_empty() {
+                    cur = word.to_string();
+                } else if cur.len() + 1 + word.len() <= cpl {
+                    cur.push(' ');
+                    cur.push_str(word);
+                } else {
+                    lines.push(std::mem::take(&mut cur));
+                    cur = word.to_string();
+                }
+                // Hard-split words that alone exceed a line.
+                while cur.len() > cpl {
+                    lines.push(cur[..cpl].to_string());
+                    cur = cur[cpl..].to_string();
+                }
+            }
+            lines.push(cur); // keeps blank paragraph lines as spacing
+        }
+        Teleprompter { lines }
+    }
+
+    /// Pixels per teleprompter line (glyph + padding).
+    pub fn line_height() -> usize {
+        GH * TP_SCALE + TP_LINE_PAD
+    }
+
+    /// Render the band and the visible line window. `scroll_px` is the
+    /// scroll offset in pixels (e.g. seconds * speed).
+    pub fn draw(&self, frame: &mut [u8], w: usize, h: usize, scroll_px: usize, pos: BandPos) {
+        if self.lines.is_empty() {
+            return;
+        }
+        let lh = Self::line_height();
+        let band_h = (TP_VISIBLE_LINES * lh + 2 * TP_PAD_Y).min(h);
+        let band_top = match pos {
+            BandPos::Top => 0,
+            BandPos::Bottom => h - band_h,
+        };
+        blend_band(frame, w, band_top, band_h, (34, 30, 28), 200);
+
+        // Clamp so the tail of the script stays on screen instead of
+        // scrolling into emptiness.
+        let max_scroll = self
+            .lines
+            .len()
+            .saturating_sub(TP_VISIBLE_LINES)
+            .saturating_mul(lh);
+        let scroll_px = scroll_px.min(max_scroll);
+        let first = scroll_px / lh;
+        let off = (scroll_px % lh) as i32;
+        for i in 0..TP_VISIBLE_LINES {
+            let Some(line) = self.lines.get(first + i) else {
+                break;
+            };
+            let chars: Vec<u8> = line.bytes().map(|c| c.to_ascii_uppercase()).collect();
+            let y0 = band_top as i32 + TP_PAD_Y as i32 + (i * lh) as i32 - off;
+            draw_chars(frame, w, h, TP_PAD_X, y0, &chars, TP_SCALE, band_top, band_top + band_h);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn teleprompter_wraps_words() {
+        let tp = Teleprompter::from_text("hello world this is a test", 120);
+        // 120px -> cpl = (120-16)/12 = 8 chars/line, hard wrap on words.
+        assert!(tp.lines.iter().all(|l| l.len() <= 8 || !l.contains(' ')));
+        assert!(tp.lines.len() > 1);
+    }
+
+    #[test]
+    fn teleprompter_draw_smoke() {
+        let (w, h) = (160usize, 60usize);
+        let tp = Teleprompter::from_text("one two three four five six seven eight nine ten", w);
+        let mut frame = vec![0u8; w * h * 4];
+        tp.draw(&mut frame, w, h, 0, BandPos::Top);
+        tp.draw(&mut frame, w, h, usize::MAX, BandPos::Bottom); // clamped, no panic
+    }
+
+    #[test]
+    fn subtitle_smoke() {
+        let (w, h) = (160usize, 60usize);
+        let mut frame = vec![0u8; w * h * 4];
+        draw_subtitle(&mut frame, w, h, "hello");
+        assert!(frame.iter().any(|&b| b != 0)); // band + text landed
+    }
+}

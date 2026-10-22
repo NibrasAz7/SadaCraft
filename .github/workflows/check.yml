@@ -1,0 +1,129 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # whisper-rs-sys generates bindings via bindgen -> needs libclang on PATH.
+  # windows-latest ships LLVM here already.
+  LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Typecheck + cargo check (default features)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: app/frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        working-directory: app/frontend
+        run: npx tsc --noEmit
+
+      # src-tauri/build.rs runs tauri-build, which embeds frontendDist (../out)
+      # at macro-expansion time, so `cargo check` needs the Next.js static
+      # export to exist first.
+      - name: Build frontend (static export for tauri-build)
+        working-directory: app/frontend
+        run: pnpm build
+
+      - name: Setup Rust toolchain (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry and target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+          cache-on-failure: true
+
+      # msvc-env.cmd gotcha: locally this repo uses a preview "Visual Studio 18
+      # 2026" install that system cmake 3.29 doesn't know, so the cmd file
+      # forces CMAKE_GENERATOR="NMake Makefiles" inside vcvars64. On
+      # windows-latest, cmake knows the installed VS 2022 generator, so the
+      # default works — no dev-shell or generator override needed. cmake is
+      # required by whisper-rs-sys and llama-cpp-sys-2 (whisper.cpp/llama.cpp).
+      - name: cargo check (all workspace members)
+        working-directory: app
+        run: cargo check --workspace --locked
+
+  check-vulkan:
+    name: cargo check (vulkan feature)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: app/frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (static export for tauri-build)
+        working-directory: app/frontend
+        run: pnpm build
+
+      # Vulkan SDK provides the headers/libs whisper.cpp's Vulkan backend
+      # needs to compile (and glslc/glslangValidator for shader builds).
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Setup Rust toolchain (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry and target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+          cache-on-failure: true
+
+      - name: cargo check (src-tauri, vulkan)
+        working-directory: app
+        run: cargo check -p sadacraft --features vulkan --locked

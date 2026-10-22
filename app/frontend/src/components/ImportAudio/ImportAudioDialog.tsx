@@ -292,6 +292,7 @@ export function ImportAudioDialog({
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-700">Meeting Title</label>
                     <Input
+                      dir="auto"
                       value={title}
                       onChange={(e) => {
                         setTitle(e.target.value);

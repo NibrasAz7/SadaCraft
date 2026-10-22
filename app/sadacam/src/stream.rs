@@ -66,13 +66,22 @@ fn create_media_type(subtype: &GUID, frame_bytes: u32) -> Result<IMFMediaType> {
 pub fn new_stream_shared() -> Result<Arc<StreamShared>> {
     unsafe {
         let queue = MFCreateEventQueue()?;
-        // Per-client format table: RGB32 first (default current type —
-        // clients that never negotiate keep the original behavior),
-        // NV12 second for Zoom-style consumers that request it via the
-        // stream descriptor's IMFMediaTypeHandler.
+        // Per-client format table (see routing.rs): the routed preference
+        // is advertised first and set as the handler's current type, so
+        // clients that never negotiate get it; clients that do call
+        // SetCurrentMediaType still get exactly what they asked for.
+        // Absent config, RGB32 stays first — the original default.
         let mt_rgb32 = create_media_type(&MFVideoFormat_RGB32, FRAME_BYTES)?;
         let mt_nv12 = create_media_type(&MFVideoFormat_NV12, FRAME_BYTES_NV12)?;
-        let descriptor = MFCreateStreamDescriptor(0, &[Some(mt_rgb32), Some(mt_nv12)])?;
+        let (first, second) = match crate::routing::preferred_format() {
+            Some(crate::routing::PreferredFormat::Nv12) => (mt_nv12, mt_rgb32),
+            _ => (mt_rgb32, mt_nv12),
+        };
+        let descriptor = MFCreateStreamDescriptor(0, &[Some(first.clone()), Some(second)])?;
+        // Make the routed type the handler's current (default) media type.
+        let _ = descriptor
+            .GetMediaTypeHandler()
+            .and_then(|h| h.SetCurrentMediaType(&first));
         // Attributes Frame Server requires on the stream descriptor.
         descriptor.SetGUID(&MF_DEVICESTREAM_STREAM_CATEGORY, &PINNAME_VIDEO_CAPTURE)?;
         descriptor.SetUINT32(&MF_DEVICESTREAM_STREAM_ID, 0)?;

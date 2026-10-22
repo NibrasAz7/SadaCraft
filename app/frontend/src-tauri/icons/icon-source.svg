@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- SadaCraft app icon: "sada" (صدا) = echo. Concentric sound-wave arcs
+       emanating from a source dot inside a rounded square. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect width="512" height="512" rx="116"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <g clip-path="url(#squircle)" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round">
+    <circle cx="176" cy="256" r="40" fill="#FFFFFF" stroke="none"/>
+    <path d="M 224 172.9 A 96 96 0 0 1 224 339.1"/>
+    <path d="M 252 124.4 A 152 152 0 0 1 252 387.6"/>
+    <path d="M 280 75.9 A 208 208 0 0 1 280 436.1"/>
+  </g>
+</svg>

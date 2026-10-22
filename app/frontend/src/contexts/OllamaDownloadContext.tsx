@@ -99,6 +99,33 @@ export function OllamaDownloadProvider({ children }: { children: React.ReactNode
         );
         unsubscribers.push(unlistenComplete);
 
+        // Download cancelled
+        const unlistenCancelled = await listen<{ modelName: string }>(
+          'ollama-model-download-cancelled',
+          (event) => {
+            const { modelName } = event.payload;
+            console.log(`⚪ [OllamaDownloadContext] Download cancelled for ${modelName}`);
+
+            toast.info(`Download cancelled: ${modelName}`, {
+              duration: 4000
+            });
+
+            // Clear progress and remove from downloading set
+            setDownloadProgress(prev => {
+              const newProgress = new Map(prev);
+              newProgress.delete(modelName);
+              return newProgress;
+            });
+
+            setDownloadingModels(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(modelName);
+              return newSet;
+            });
+          }
+        );
+        unsubscribers.push(unlistenCancelled);
+
         // Download error
         const unlistenError = await listen<{ modelName: string; error: string }>(
           'ollama-model-download-error',

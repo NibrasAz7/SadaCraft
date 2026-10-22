@@ -39,6 +39,7 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
     <div className="flex-1">
       <textarea
         ref={titleInputRef}
+        dir="auto"
         value={title}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onFinishEditing}
@@ -58,7 +59,8 @@ export const EditableTitle: React.FC<EditableTitleProps> = ({
   ) : (
     <div className="group flex items-center space-x-2 flex-1">
       <h1
-        className="text-2xl font-bold cursor-pointer hover:bg-gray-50 rounded px-1 flex-1 whitespace-pre-wrap"
+        dir="auto"
+        className="text-2xl font-bold cursor-pointer hover:bg-gray-50 rounded px-1 flex-1 whitespace-pre-wrap text-start"
         onClick={onStartEditing}
       >
         {title}

@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal';
 import { SummaryLanguageSettings } from '@/components/SummaryLanguageSettings';
 import { SummarySelfImproveSettings } from '@/components/SummarySelfImproveSettings';
+import { CustomEndpointSettings } from '@/components/CustomEndpointSettings';
+import { TemplateEditor } from '@/components/TemplateEditor';
 import { Switch } from './ui/switch';
 import { useConfig } from '@/contexts/ConfigContext';
 
@@ -152,6 +154,10 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
       </div>
 
       <SummarySelfImproveSettings />
+
+      <CustomEndpointSettings />
+
+      <TemplateEditor />
     </div>
   );
 }

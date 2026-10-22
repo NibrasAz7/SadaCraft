@@ -234,6 +234,7 @@ export const BlockComponent: React.FC<BlockProps> = ({
       <div className="relative flex-1 py-0.5 px-1">
         <textarea
           ref={textareaRef}
+          dir="auto"
           value={block.content}
           data-block-id={block.id}
           onChange={handleChange}

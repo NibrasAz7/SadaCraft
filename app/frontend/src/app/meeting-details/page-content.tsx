@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
+import { MeetingChat } from '@/components/MeetingChat';
 import { MeetingDetailsSplitView, type MeetingDetailsTab } from '@/components/MeetingDetails/MeetingDetailsSplitView';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 
@@ -221,6 +222,7 @@ export default function PageContent({
             />
           }
           summary={
+            <div className="flex-1 flex flex-col min-h-0">
             <SummaryPanel
               meeting={meeting}
               meetingTitle={meetingData.meetingTitle}
@@ -250,6 +252,10 @@ export default function PageContent({
               isModelConfigLoading={isModelConfigLoading}
               onOpenModelSettings={handleRegisterModalOpen}
             />
+            <div className="h-72 shrink-0 border-t border-gray-200">
+              <MeetingChat meetingId={meeting.id} />
+            </div>
+            </div>
           }
         />
       </div>

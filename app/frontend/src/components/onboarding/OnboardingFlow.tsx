@@ -3,6 +3,7 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import {
   WelcomeStep,
   PermissionsStep,
+  SummaryModelStep,
   DownloadProgressStep,
   SetupOverviewStep,
 } from './steps';
@@ -31,18 +32,20 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     checkPlatform();
   }, []);
 
-  // 4-Step Onboarding Flow (System-Recommended Models):
+  // 5-Step Onboarding Flow:
   // Step 1: Welcome - Introduce SadaCraft features
   // Step 2: Setup Overview - Database initialization + show recommended downloads
-  // Step 3: Download Progress - Download Parakeet + Summary Model (auto-selected based on platform/RAM)
-  // Step 4: Permissions - Request mic + system audio (macOS only)
+  // Step 3: Summary Model - Pick the on-device summary model to download
+  // Step 4: Download Progress - Download Parakeet + selected Summary Model
+  // Step 5: Permissions - Request mic + system audio (macOS only)
 
   return (
     <div className="onboarding-flow">
       {currentStep === 1 && <WelcomeStep />}
       {currentStep === 2 && <SetupOverviewStep />}
-      {currentStep === 3 && <DownloadProgressStep />}
-      {currentStep === 4 && isMac && <PermissionsStep />}
+      {currentStep === 3 && <SummaryModelStep />}
+      {currentStep === 4 && <DownloadProgressStep />}
+      {currentStep === 5 && isMac && <PermissionsStep />}
     </div>
   );
 }

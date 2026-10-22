@@ -72,17 +72,17 @@
 - Speaker diarization UI (who said what)
 - Custom summary templates — editor + per-meeting-type presets
 - Custom AI-model connector (OpenAI-compatible endpoint field)
-- Auto-detect meetings (audio-activity wake / process heuristic / calendar)
+- ✅ Auto-detect meetings (process heuristic + WASAPI loopback RMS wake → suggest/auto-start; `src/detect/`)
 - ✅ Advanced exports: PDF, DOCX, Markdown — one Tauri command each (PDF via print-styled HTML → browser print, for correct Arabic shaping)
-- Integrations: local MCP server (stdin/JSON-RPC), webhook on meeting-end, `sadacraft-cli` for scripting
-- "Ask your meeting" chat (transcript + LLM Q&A)
+- ✅ Integrations: local MCP server (stdin/JSON-RPC), webhook on meeting-end, `sadacraft-cli` for scripting
+- ✅ "Ask your meeting" chat (`summary/chat.rs` + `MeetingChat`)
 - ✅ **Self-improving AI** (`summary/self_improve.rs`, concept from google-harness2, not embedded): Propose–Probe–Compose per summary — LLM proposes one rule → final report regenerated with it (probe) → judge picks A/B → winner's markdown kept, rule persisted to `summary_lessons.json` keyed by template (auto-injects, free). Toggle in Settings→Summary + lessons viewer/editor (per-rule delete, clear-all); env `SADACRAFT_SUMMARY_SELF_IMPROVE` also honored. Verified live against real Qwen3.5-4B sidecar. See "Harness²" below.
 
-**Phase 3 — the pointer**
-9. Spotlight overlay: transparent always-on-top click-through layer on the *real* screen (ZoomIt/FocusToolWin pattern) — drawn under the share, so it works on every platform with zero integration
-10. Configurable: ring color/opacity/radius, click-ripple color/fade/effect style, laser trail, dim-outside spotlight, annotation pen (ppInk), keystroke viz — all behind a toggle hotkey + per-monitor on/off
+**Phase 3 — the pointer** — ✅ `app/sadasight` (standalone crate, verified)
+9. ✅ Spotlight overlay: transparent always-on-top layer on the *real* screen (ZoomIt/FocusToolWin pattern) — ring, click ripple, laser trail, dim-outside spotlight, annotation pen
+10. ✅ Configurable colors/opacity/radius behind toggle hotkeys + persistent config; ✅ keystroke viz (`keys` effect — GDI-rasterized glyph atlas, fading chips anchored to primary-monitor bottom, `Ctrl+Alt+K` / `--effect keys`, modifier combos as `CTRL+X`)
 
-**Stretch (VCam-inspired):** eye-contact correction, auto-frame, relighting, monologue/talk-time clock, mic EQ/RNNoise chain → virtual mic, in-meeting bookmarks, slide-screenshot capture into transcript.
+**Stretch (VCam-inspired):** ✅ auto-frame + relighting (unit-tested), ✅ talk-time clock, ✅ bookmarks + slide-screenshot capture, ✅ RNNoise chain (already wired in pipeline). ❌ virtual mic (needs driver — out of scope), ❌ eye-contact correction (needs 3D gaze model — deferred).
 
 ## Hard-won lessons folded in from REA
 
@@ -91,6 +91,46 @@ From Tactiq: caption data rides **RTC data channels** (`captions/captions_v2`, `
 From VCam: the **whole media pipeline runs in a Node-enabled worker** off the renderer thread; frames move as `VideoFrame.copyTo` CPU buffers; output is demand-gated by client enumeration (runtime-proven: zero frame writes without a consumer); inference happens at low res (180–360px) regardless of output res; pause = circular-buffer replay. Their kernel-driver path (AVStream + `IOCTL_XSplitVideoSendData` + in-driver RGB→YUV converters + per-process format quirks; live-decoded contract: `c05c`/`c004` 16B descriptors → `c001` 1.38 MB 720p-NV12 payload @ ~27 fps, `c080` 210B client heartbeat @ 5 Hz) is *how it's done in production* — we take the concept, not the driver. Windows' official `MFCreateVirtualCamera` user-mode path delivers the same end result without a driver.
 
 From Harness² (`research/oss/google-harness2`, Apache-2.0, arXiv 2610.14224 — *concepts borrowed, code not embedded*): an agent **harness** is everything around the model — system prompt, guardrails, memory, tool guidance, subagents, skills, scripts, plugins. Their **Propose–Probe–Compose** loop refines that harness per task without ground truth (propose edits → probe candidates on the same input → compose the better harness from behavioral contrast); a persistent **improvement harness** accumulates lessons across tasks. SadaCraft adaptation: self-optimizing summary templates (probe variants regenerate on the same transcript, composer picks by contrast — runs on bundled Qwen), a lessons store keyed by meeting type (standup/interview/lecture), and the 8-component taxonomy as the architecture for the meeting agent layer. The framework itself (Python, benchmark adapters, external agent-CLI substrates) is not a dependency — wrong shape for Tauri/Rust.
+
+## Remaining backlog (tracked tasks)
+
+**Phase 2.5 — AI layer — ✅ implemented (cargo check + tsc clean)**
+- ✅ Auto-detect meetings: `src/detect/` — process heuristic (Meet/Teams/Zoom) + WASAPI loopback RMS wake, episode debounce, Settings toggle
+- ✅ Integrations: local MCP server (stdin/JSON-RPC over meeting DB), meeting-end webhook wired into summary service, `sadacraft-cli` binary
+- ✅ "Ask your meeting" chat: `summary/chat.rs` — transcript + stored summary + ≤8-turn history, ~40k-char cap; `MeetingChat` mounted below SummaryPanel
+- ✅ Custom summary template editor: `custom_templates.rs` + `TemplateEditor` — CRUD, section reorder, built-in override/reset; per-meeting-type presets
+- ✅ Custom OpenAI-compatible endpoint: backend existed; `CustomEndpointSettings` card added in Settings→Summary
+- ✅ Speaker panel: `SpeakerPanel` in TranscriptPanel — per-speaker line counts + talk time, persistent rename `Remote-N` → real name (`speaker_commands.rs`, SQL-aggregated)
+
+**SadaCam — ✅ implemented (27/27 tests)**
+- ✅ ONNX selfie-segmentation → blur/replace: `segment.rs` via bundled `ort`, mediapipe model downloaded, real inference verified
+- ✅ Teleprompter + subtitle overlays (joins name-card)
+- ✅ Per-client format routing table (config-driven, extends NV12 negotiation)
+- ✅ Auto-frame + relighting (implemented + unit-tested; eye-contact documented as not feasible without a 3D gaze model — deferred)
+
+**Phase 3 — the pointer — ✅ implemented**
+- ✅ `app/sadasight` standalone crate (709KB): layered transparent always-on-top overlay — cursor ring, click ripple, laser trail, dim-outside spotlight, annotation pen, keystroke viz (chips + modifier combos, `Ctrl+Alt+K`), hotkeys, persistent config; live smoke-tested incl. `--effect` IPC round-trip.
+
+**Stretch**
+- ✅ Talk-time clock: `TalkTimeClock` per-speaker share bar in TranscriptPanel (live + saved meetings)
+- ✅ In-meeting bookmarks + slide capture: `bookmark_commands.rs` + `MeetingBookmarks` — pending queue while unsaved → `finalize_pending_bookmarks` on meeting id; GDI BitBlt primary-monitor PNG under appdata `slides/`; SQLite migration `20261020000000_add_bookmarks`
+- ✅ RNNoise mic cleanup: already in pipeline (`nnnoiseless`/`NoiseSuppressionProcessor`, `audio/audio_processing.rs`)
+- ❌ Virtual mic output — not built (no virtual audio device; would need a driver — out of scope by design)
+- ❌ Eye-contact correction — deferred (needs 3D gaze estimation)
+
+**Ops (needs elevation/human — not code tasks)**
+- Elevated deploy: `net stop FrameServer` → copy `sadacam.dll` to `C:\ProgramData\SadaCraft\` → `net start FrameServer` (rebuild first: `cargo build -p sadacam`; `C:\st-cam` cache was cleaned)
+- CUDA 13.4.1: `winget upgrade Nvidia.CUDA` → `tools\cuda-crt\cuda-check-v134.cmd`
+- Live verification: real meeting → `You`/`Remote-N` chips; self-improve → `summary_lessons.json`; real-client NV12 capture; real FrameServer recycle; bookmarks during a live recording; segmentation + teleprompter on a real camera feed
+
+**Repo/polish gaps**
+- ✅ Icon/logo art generated (real iconset, wired into `tauri.conf.json`)
+- ✅ CI workflow at repo root: `cargo check` all 4 workspace members + `tsc` + Vulkan-SDK job
+- ✅ RTL rendering pass: `dir="auto"` on transcript/summary inputs and views
+- ✅ Model download UX: Ollama pull progress + cancel
+- ✅ First-run onboarding: mic/system permission walkthrough + summary-model picker step
+- ✅ Dead legacy `app/.github/` (Meetily workflows/templates, non-functional at nested path) removed
+- ⚠️ Release build itself not run (`tauri build` NSIS installer needs a full release compile); code signing not configured; updater pubkey in `tauri.conf.json` is still Meetily's — needs a SadaCraft keypair before enabling the update channel
 
 ## Architecture choice
 

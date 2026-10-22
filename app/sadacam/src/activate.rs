@@ -74,6 +74,13 @@ impl IMFActivate_Impl for SadaCamActivate_Impl {
                 return Err(E_POINTER.into());
             }
             *ppv = std::ptr::null_mut();
+            // Opportunistic client-identity probe for the format-routing
+            // table: Frame Server is not documented to stamp attributes on
+            // our activate, but if any string mentions a *.exe we record it
+            // before the source builds its stream descriptor.
+            if let Some(name) = crate::routing::probe_client_identity(&self.attrs) {
+                crate::routing::note_detected_client(name);
+            }
             let mut guard = self.source.lock().map_err(|_| Error::from_hresult(E_FAIL))?;
             if guard.is_none() {
                 let ex: IMFMediaSourceEx = crate::source::SadaMediaSource::new()?.into();
