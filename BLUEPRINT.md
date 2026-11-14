@@ -101,6 +101,7 @@ From Harness² (`research/oss/google-harness2`, Apache-2.0, arXiv 2610.14224 —
 - ✅ Custom summary template editor: `custom_templates.rs` + `TemplateEditor` — CRUD, section reorder, built-in override/reset; per-meeting-type presets
 - ✅ Custom OpenAI-compatible endpoint: backend existed; `CustomEndpointSettings` card added in Settings→Summary
 - ✅ Speaker panel: `SpeakerPanel` in TranscriptPanel — per-speaker line counts + talk time, persistent rename `Remote-N` → real name (`speaker_commands.rs`, SQL-aggregated)
+- ✅ Capture-source picker: presets Mic+System / Mic only / System only / Specific app in `DeviceSelection` (persisted via ConfigContext); per-app capture via WASAPI process loopback (`capture/process_loopback.rs`, Win11 ≥22621) with live audio-session app list; `capture_pid` plumbed through `start_recording*`; auto-detect toast offers one-click record of the detected app's audio
 
 **SadaCam — ✅ implemented (27/27 tests)**
 - ✅ ONNX selfie-segmentation → blur/replace: `segment.rs` via bundled `ort`, mediapipe model downloaded, real inference verified
@@ -118,10 +119,11 @@ From Harness² (`research/oss/google-harness2`, Apache-2.0, arXiv 2610.14224 —
 - ❌ Virtual mic output — not built (no virtual audio device; would need a driver — out of scope by design)
 - ❌ Eye-contact correction — deferred (needs 3D gaze estimation)
 
-**Ops (needs elevation/human — not code tasks)**
-- Elevated deploy: `net stop FrameServer` → copy `sadacam.dll` to `C:\ProgramData\SadaCraft\` → `net start FrameServer` (rebuild first: `cargo build -p sadacam`; `C:\st-cam` cache was cleaned)
-- CUDA 13.4.1: `winget upgrade Nvidia.CUDA` → `tools\cuda-crt\cuda-check-v134.cmd`
-- Live verification: real meeting → `You`/`Remote-N` chips; self-improve → `summary_lessons.json`; real-client NV12 capture; real FrameServer recycle; bookmarks during a live recording; segmentation + teleprompter on a real camera feed
+**Ops**
+- ✅ Elevated deploy DONE: rebuilt `sadacam.dll` → `C:\ProgramData\SadaCraft\` + FrameServer restart (UAC approved); verified end-to-end — ffmpeg captured real frames + "SADACRAFT" name-card through the consumer path
+- ⏳ CUDA 13.4.1: installer downloaded + hash-verified, GUI wizard launched but closed before completing — still on CUDA 13.0 (`V13.0.88`). Vulkan path is the working GPU route (`build-vulkan.cmd` / `dev-vulkan.cmd`)
+- ⏳ Release build: `app\build-release-vulkan.cmd` → NSIS installer (Vulkan features)
+- Live verification: real meeting → `You`/`Remote-N` chips; self-improve → `summary_lessons.json`; capture-source picker (mic-only / system-only / per-app) during a live call; bookmarks during a live recording; segmentation + teleprompter on a real camera feed
 
 **Repo/polish gaps**
 - ✅ Icon/logo art generated (real iconset, wired into `tauri.conf.json`)
