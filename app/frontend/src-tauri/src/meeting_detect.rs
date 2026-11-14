@@ -75,6 +75,13 @@ pub struct MeetingDetectedPayload {
     pub confidence: f32,
     /// Human-readable detail, e.g. the executable name or the RMS threshold hit.
     pub detail: String,
+    /// Display name of the detected meeting process (process heuristic only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_name: Option<String>,
+    /// PID of the detected meeting process — the frontend can offer one-click
+    /// recording with per-app (process-loopback) capture of this app.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
 }
 
 fn persisted_enabled(app_data_dir: &Path) -> bool {
@@ -94,15 +101,21 @@ pub fn is_enabled(app_data_dir: Option<&PathBuf>) -> bool {
     app_data_dir.is_some_and(|dir| persisted_enabled(dir))
 }
 
-/// First meeting-app process older than `MIN_PROCESS_AGE_S`, as a detail label.
-fn meeting_process_hit(sys: &sysinfo::System) -> Option<&'static str> {
+/// First meeting-app process older than `MIN_PROCESS_AGE_S`, as
+/// (detail label, exe name, pid). The PID lets the frontend offer one-click
+/// per-app (process-loopback) capture of the detected app.
+fn meeting_process_hit(sys: &sysinfo::System) -> Option<(&'static str, String, u32)> {
     sys.processes().values().find_map(|p| {
-        let name = p.name().to_string_lossy().to_lowercase();
+        let raw_name = p.name().to_string_lossy();
+        let name = raw_name.to_lowercase();
         let base = name.strip_suffix(".exe").unwrap_or(&name);
         MEETING_PROCESSES
             .iter()
             .find(|(key, _)| *key == base)
-            .and_then(|(_, label)| (p.run_time() >= MIN_PROCESS_AGE_S).then_some(*label))
+            .and_then(|(_, label)| {
+                (p.run_time() >= MIN_PROCESS_AGE_S)
+                    .then(|| (*label, raw_name.to_string(), p.pid().as_u32()))
+            })
     })
 }
 
@@ -465,11 +478,21 @@ async fn run<R: Runtime>(app: AppHandle<R>) {
         let audio_detail: Option<String> = None;
 
         let signal = process_hit
-            .map(|exe| ("process", 0.9_f32, exe.to_string()))
-            .or_else(|| audio_detail.map(|d| ("audio", 0.6_f32, d)));
+            .map(|(exe, name, pid)| {
+                (
+                    "process",
+                    0.9_f32,
+                    exe.to_string(),
+                    Some(name),
+                    Some(pid),
+                )
+            })
+            .or_else(|| {
+                audio_detail.map(|d| ("audio", 0.6_f32, d, None, None))
+            });
 
         match signal {
-            Some((source, confidence, detail)) => {
+            Some((source, confidence, detail, process_name, pid)) => {
                 last_signal_seen = Some(Instant::now());
                 if !episode_latched {
                     episode_latched = true;
@@ -477,6 +500,8 @@ async fn run<R: Runtime>(app: AppHandle<R>) {
                         source: source.to_string(),
                         confidence,
                         detail: detail.clone(),
+                        process_name,
+                        pid,
                     };
                     info!(
                         "meeting_detect: emitting meeting-detected (source={}, detail={})",

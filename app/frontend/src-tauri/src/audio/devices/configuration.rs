@@ -56,11 +56,16 @@ pub enum DeviceType {
 pub struct AudioDevice {
     pub name: String,
     pub device_type: DeviceType,
+    /// Windows process-loopback capture: when set on an Output device, the
+    /// system-audio stream captures only this PID's render audio instead of
+    /// the whole endpoint mix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_pid: Option<u32>,
 }
 
 impl AudioDevice {
     pub fn new(name: String, device_type: DeviceType) -> Self {
-        AudioDevice { name, device_type }
+        AudioDevice { name, device_type, capture_pid: None }
     }
 
     pub fn from_name(name: &str) -> Result<Self> {

@@ -350,21 +350,44 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   // Load device preferences on mount
   useEffect(() => {
     const loadDevicePreferences = async () => {
+      // Capture-source preset persists in localStorage (the app PID itself is
+      // deliberately NOT persisted — PIDs are meaningless across restarts).
+      let savedCapture: Partial<SelectedDevices> = {};
+      try {
+        const raw = localStorage.getItem('captureSourcePrefs');
+        if (raw) savedCapture = JSON.parse(raw) as Partial<SelectedDevices>;
+      } catch { /* ignore corrupt prefs */ }
+
       try {
         const prefs = await configService.getRecordingPreferences();
         if (prefs && (prefs.preferred_mic_device || prefs.preferred_system_device)) {
           setSelectedDevices({
             micDevice: prefs.preferred_mic_device,
-            systemDevice: prefs.preferred_system_device
+            systemDevice: prefs.preferred_system_device,
+            ...savedCapture
           });
           console.log('Loaded device preferences:', prefs);
+          return;
         }
       } catch (error) {
         console.log('No device preferences found or failed to load:', error);
       }
+      if (Object.keys(savedCapture).length > 0) {
+        setSelectedDevices(prev => ({ ...prev, ...savedCapture }));
+      }
     };
     loadDevicePreferences();
   }, []);
+
+  // Persist the capture-source preset whenever the selection changes.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('captureSourcePrefs', JSON.stringify({
+      captureSource: selectedDevices.captureSource ?? 'both',
+      captureAppName: selectedDevices.captureAppName ?? null,
+      // capturePid intentionally omitted — see load comment above.
+    }));
+  }, [selectedDevices]);
 
   // Calculate model options based on available models
   const modelOptions: Record<ModelConfig['provider'], string[]> = {

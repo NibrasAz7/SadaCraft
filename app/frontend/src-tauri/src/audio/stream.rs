@@ -22,6 +22,12 @@ pub enum StreamBackend {
     CoreAudio {
         task: Option<tokio::task::JoinHandle<()>>,
     },
+    /// WASAPI process-loopback capture (Windows only) — the pump runs on a
+    /// COM worker thread; we only carry the stop flag.
+    #[cfg(target_os = "windows")]
+    ProcessLoopback {
+        stop: Arc<std::sync::atomic::AtomicBool>,
+    },
 }
 
 // SAFETY: While Stream doesn't implement Send, we ensure it's only accessed
@@ -60,6 +66,24 @@ impl AudioStream {
     ) -> Result<Self> {
         info!("🎵 Stream: Creating audio stream for device: {} with backend: {:?}, device_type: {:?}",
               device.name, backend_type, device_type);
+
+        // Windows per-app process loopback: the AudioDevice carries a PID and
+        // bypasses cpal entirely (WASAPI process-loopback activation).
+        #[cfg(target_os = "windows")]
+        if device_type == DeviceType::System && device.capture_pid.is_some() {
+            info!("🔊 Stream: Using WASAPI process loopback for PID {} ('{}')",
+                  device.capture_pid.unwrap(), device.name);
+            return Self::create_process_loopback_stream(
+                device, state, device_type, recording_sender,
+            ).await;
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        if device_type == DeviceType::System && device.capture_pid.is_some() {
+            return Err(anyhow::anyhow!(
+                "Per-app audio capture is only supported on Windows"
+            ));
+        }
 
         // For system audio devices, use the selected backend
         // For microphone devices, always use CPAL
@@ -137,6 +161,53 @@ impl AudioStream {
         Ok(Self {
             device,
             backend: StreamBackend::Cpal(stream),
+        })
+    }
+
+    /// Create a WASAPI process-loopback stream (Windows only). The capture
+    /// pump runs inside the COM activation callback on an OS worker thread;
+    /// this function only performs activation and returns once samples flow.
+    #[cfg(target_os = "windows")]
+    async fn create_process_loopback_stream(
+        device: Arc<AudioDevice>,
+        state: Arc<RecordingState>,
+        device_type: DeviceType,
+        recording_sender: Option<mpsc::UnboundedSender<super::recording_state::AudioChunk>>,
+    ) -> Result<Self> {
+        let pid = device
+            .capture_pid
+            .ok_or_else(|| anyhow::anyhow!("Process-loopback device missing capture_pid"))?;
+
+        let capture = AudioCapture::new(
+            device.clone(),
+            state.clone(),
+            48000,
+            2, // stereo i16 capture, downmixed to mono by AudioCapture
+            device_type,
+            recording_sender,
+        );
+
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_flag = stop.clone();
+        let device_name = device.name.clone();
+
+        // COM activation blocks briefly — keep it off the async executor.
+        tokio::task::spawn_blocking(move || {
+            super::capture::process_loopback::activate_process_loopback(pid, capture, stop_flag)
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Process-loopback activation failed for '{}': {}",
+                        device_name, e
+                    )
+                })
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Process-loopback task failed: {}", e))??;
+
+        info!("✅ Process-loopback stream started for PID {}", pid);
+        Ok(Self {
+            device,
+            backend: StreamBackend::ProcessLoopback { stop },
         })
     }
 
@@ -342,6 +413,12 @@ impl AudioStream {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                     info!("Core Audio task aborted");
                 }
+            }
+            #[cfg(target_os = "windows")]
+            StreamBackend::ProcessLoopback { stop } => {
+                // The pump loop polls this flag every ~200ms and then releases
+                // the WASAPI client on its COM worker thread.
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
 

@@ -110,6 +110,11 @@ const TRANSCRIPTION_RUNTIME_START_ERROR_CODE: &str =
     "TRANSCRIPTION_RUNTIME_INITIALIZATION_FAILED";
 const TRANSCRIPTION_RUNTIME_USER_MESSAGE: &str = "Speech recognition could not initialize. Restart SadaCraft. If the problem continues, repair or reinstall the app.";
 
+/// Device-name sentinel meaning "explicitly disabled" — distinct from `None`,
+/// which means "use the system default". Sent by the frontend capture-source
+/// preset (Mic only / System only).
+pub const DEVICE_DISABLED_SENTINEL: &str = "__sadacraft_disabled__";
+
 // ============================================================================
 // PUBLIC TYPES
 // ============================================================================
@@ -183,6 +188,13 @@ fn resolve_mic_or_default<R: Runtime>(
 ) -> Option<Arc<super::AudioDevice>> {
     use cpal::traits::{DeviceTrait, HostTrait};
 
+    // Explicit "mic disabled" from the capture-source preset — skip the mic
+    // entirely instead of resolving to the system default.
+    if requested_name == Some(DEVICE_DISABLED_SENTINEL) {
+        info!("🎤 Microphone explicitly disabled by capture-source preset");
+        return None;
+    }
+
     let requested_specific = requested_name.is_some();
 
     if let Some(name) = requested_name {
@@ -241,6 +253,12 @@ fn resolve_mic_or_default<R: Runtime>(
 /// devices are Pulse/ALSA monitor *inputs* tagged Output, so output_devices()
 /// would false-negative them. stream.rs still hard-fails on a missing device.
 fn resolve_system_or_default(requested_name: Option<&str>) -> Option<Arc<super::AudioDevice>> {
+    // Explicit "system audio disabled" from the capture-source preset.
+    if requested_name == Some(DEVICE_DISABLED_SENTINEL) {
+        info!("🔊 System audio explicitly disabled by capture-source preset");
+        return None;
+    }
+
     if let Some(name) = requested_name {
         match parse_audio_device(name) {
             Ok(device) => {
@@ -488,8 +506,61 @@ pub async fn start_recording_with_devices<R: Runtime>(
     app: AppHandle<R>,
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
+    capture_pid: Option<u32>,
 ) -> Result<(), String> {
-    start_recording_with_devices_and_meeting(app, mic_device_name, system_device_name, None).await
+    start_recording_with_devices_and_meeting(
+        app,
+        mic_device_name,
+        system_device_name,
+        None,
+        capture_pid,
+    )
+    .await
+}
+
+/// Attach a Windows process-loopback PID to the system-audio device. The PID
+/// takes precedence over the "system audio disabled" sentinel — picking an
+/// app means "capture this app's audio". Returns `None` unchanged when no
+/// PID was requested; errors cleanly on unsupported platforms/builds.
+#[cfg(target_os = "windows")]
+fn apply_capture_pid(
+    device: Option<Arc<super::AudioDevice>>,
+    capture_pid: Option<u32>,
+) -> Result<Option<Arc<super::AudioDevice>>, String> {
+    let Some(pid) = capture_pid else {
+        return Ok(device);
+    };
+    if pid == 0 {
+        return Err("Invalid capture PID".to_string());
+    }
+    if !super::capture::process_loopback::process_loopback_supported() {
+        return Err(
+            "Per-app audio capture requires Windows 10 build 20348 or later".to_string(),
+        );
+    }
+    let mut dev = device
+        .map(|d| (*d).clone())
+        .unwrap_or_else(|| {
+            super::AudioDevice::new(
+                "Process Loopback".to_string(),
+                super::DeviceType::Output,
+            )
+        });
+    dev.capture_pid = Some(pid);
+    dev.name = format!("{} [app PID {}]", dev.name, pid);
+    info!("🎯 Per-app capture enabled for PID {}", pid);
+    Ok(Some(Arc::new(dev)))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_capture_pid(
+    _device: Option<Arc<super::AudioDevice>>,
+    capture_pid: Option<u32>,
+) -> Result<Option<Arc<super::AudioDevice>>, String> {
+    if capture_pid.is_some() {
+        return Err("Per-app audio capture is only supported on Windows".to_string());
+    }
+    Ok(_device)
 }
 
 /// Start recording with specific devices and optional meeting name
@@ -498,6 +569,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
     meeting_name: Option<String>,
+    capture_pid: Option<u32>,
 ) -> Result<(), String> {
     info!(
         "Starting recording with specific devices: mic={:?}, system={:?}, meeting={:?}",
@@ -547,6 +619,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     let mic_device = resolve_mic_or_default(&app, mic_device_name.as_deref());
 
     let system_device = resolve_system_or_default(system_device_name.as_deref());
+    let system_device = apply_capture_pid(system_device, capture_pid)?;
 
     #[cfg(target_os = "macos")]
     prepare_audio_for_recording(system_device.as_deref()).await?;

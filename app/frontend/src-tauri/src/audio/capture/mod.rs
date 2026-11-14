@@ -3,6 +3,7 @@
 pub mod microphone;
 pub mod system;
 pub mod backend_config;
+pub mod process_loopback;
 
 #[cfg(target_os = "macos")]
 pub mod core_audio;

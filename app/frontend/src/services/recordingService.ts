@@ -27,6 +27,14 @@ export interface RecordingStoppedPayload {
 // the UI into ERROR instead of an eternal STARTING spinner.
 const START_TIMEOUT_MS = 120000;
 
+/**
+ * Device-name sentinel meaning "explicitly disabled" — sent for the
+ * capture-source presets (Mic only / System only). `null` means "use the
+ * system default", so a real name is required to suppress a stream.
+ * Must match DEVICE_DISABLED_SENTINEL in recording_commands.rs.
+ */
+export const DEVICE_DISABLED = '__sadacraft_disabled__';
+
 // ponytail: on timeout we only reject — no auto stop_recording. Calling stop
 // against a stuck start could itself block; the ERROR state lets the user
 // retry and the backend engine-lifecycle lock serializes that retry.
@@ -82,20 +90,26 @@ export class RecordingService {
 
   /**
    * Start recording with device configuration and meeting name
-   * @param micDeviceName - Microphone device name (null for default)
-   * @param systemDeviceName - System audio device name (null for default)
+   * @param micDeviceName - Microphone device name (null for default,
+   *   DEVICE_DISABLED to skip the mic entirely)
+   * @param systemDeviceName - System audio device name (null for default,
+   *   DEVICE_DISABLED to skip system audio)
    * @param meetingName - Meeting name/title
+   * @param capturePid - Windows process-loopback PID: when set, system audio
+   *   captures only this app's render audio instead of the full mix
    * @returns Promise<void>
    */
   async startRecordingWithDevices(
     micDeviceName: string | null,
     systemDeviceName: string | null,
-    meetingName: string
+    meetingName: string,
+    capturePid?: number | null
   ): Promise<void> {
     return withStartTimeout(invoke('start_recording_with_devices_and_meeting', {
       micDeviceName,
       systemDeviceName,
-      meetingName
+      meetingName,
+      capturePid: capturePid ?? null
     }));
   }
 

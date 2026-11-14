@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { RefreshCw, Mic, Speaker } from 'lucide-react';
+import { RefreshCw, Mic, Speaker, AppWindow } from 'lucide-react';
 import { AudioLevelMeter, CompactAudioLevelMeter } from './AudioLevelMeter';
 import { AudioBackendSelector } from './AudioBackendSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,9 +13,24 @@ export interface AudioDevice {
   device_type: 'Input' | 'Output';
 }
 
+/** What the recording should capture. 'app' = per-app process loopback (Windows). */
+export type CaptureSource = 'both' | 'mic' | 'system' | 'app';
+
 export interface SelectedDevices {
   micDevice: string | null;
   systemDevice: string | null;
+  /** Defaults to 'both' when undefined (older persisted state). */
+  captureSource?: CaptureSource;
+  /** PID for 'app' capture source (Windows process loopback). */
+  capturePid?: number | null;
+  /** Display name of the captured app, for UI labels only. */
+  captureAppName?: string | null;
+}
+
+export interface AudioProcessInfo {
+  pid: number;
+  name: string;
+  window_title?: string | null;
 }
 
 export interface AudioLevelData {
@@ -45,6 +60,11 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   const [audioLevels, setAudioLevels] = useState<Map<string, AudioLevelData>>(new Map());
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
+  const [appCaptureSupported, setAppCaptureSupported] = useState(false);
+  const [audioProcesses, setAudioProcesses] = useState<AudioProcessInfo[]>([]);
+  const [loadingProcesses, setLoadingProcesses] = useState(false);
+
+  const captureSource: CaptureSource = selectedDevices.captureSource ?? 'both';
 
   // Filter devices by type
   const inputDevices = devices.filter(device => device.device_type === 'Input');
@@ -70,6 +90,66 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   useEffect(() => {
     fetchDevices();
   }, []);
+
+  // Probe per-app capture support once (Windows-only feature).
+  useEffect(() => {
+    let cancelled = false;
+    invoke<boolean>('audio_app_capture_supported')
+      .then((supported) => {
+        if (cancelled) return;
+        setAppCaptureSupported(supported);
+        // A persisted 'app' selection can't work on this platform — fall
+        // back to the default preset instead of erroring at record time.
+        if (!supported && selectedDevices.captureSource === 'app') {
+          onDeviceChangeRef.current({
+            ...selectedDevices,
+            captureSource: 'both',
+            capturePid: null,
+            captureAppName: null,
+          });
+        }
+      })
+      .catch(() => { /* unsupported command / non-Windows — leave disabled */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load the audio-capable process list when 'app' capture is selected.
+  useEffect(() => {
+    if (captureSource !== 'app' || !appCaptureSupported || disabled) return;
+    let cancelled = false;
+    setLoadingProcesses(true);
+    invoke<AudioProcessInfo[]>('list_audio_processes')
+      .then((procs) => {
+        if (cancelled) return;
+        setAudioProcesses(procs);
+        // Auto-select the first app so the picker is never in a dead state.
+        if (procs.length > 0 && selectedDevices.capturePid == null) {
+          onDeviceChangeRef.current({
+            ...selectedDevices,
+            capturePid: procs[0].pid,
+            captureAppName: procs[0].name,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to list audio processes:', err);
+        if (!cancelled) setAudioProcesses([]);
+      })
+      .finally(() => { if (!cancelled) setLoadingProcesses(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureSource, appCaptureSupported, disabled]);
+
+  // Drop a stale app selection when the process list refreshes without it.
+  useEffect(() => {
+    if (captureSource !== 'app' || audioProcesses.length === 0) return;
+    const pid = selectedDevices.capturePid;
+    if (pid != null && !audioProcesses.some((p) => p.pid === pid)) {
+      onDeviceChangeRef.current({ ...selectedDevices, capturePid: null, captureAppName: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioProcesses]);
 
   // Auto-select the default when a previously-selected device is no longer
   // available (e.g. AirPods that have since disconnected). Without this the
@@ -224,6 +304,30 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     }).catch(err => console.error('Failed to track system audio selection:', err));
   };
 
+  // Handle capture-source preset change (Mic + System / Mic only / System
+  // only / Specific app). The preset is applied at recording start — the
+  // per-device dropdowns stay editable either way.
+  const handleCaptureSourceChange = (value: string) => {
+    const source = value as CaptureSource;
+    onDeviceChange({
+      ...selectedDevices,
+      captureSource: source,
+      capturePid: source === 'app' ? selectedDevices.capturePid ?? null : null,
+      captureAppName: source === 'app' ? selectedDevices.captureAppName ?? null : null,
+    });
+  };
+
+  // Handle per-app capture selection (Windows process loopback).
+  const handleAppChange = (pidValue: string) => {
+    const pid = Number(pidValue);
+    const proc = audioProcesses.find((p) => p.pid === pid);
+    onDeviceChange({
+      ...selectedDevices,
+      capturePid: pid,
+      captureAppName: proc?.name ?? selectedDevices.captureAppName ?? null,
+    });
+  };
+
   // Start audio level monitoring
   const startAudioLevelMonitoring = async () => {
     try {
@@ -312,6 +416,69 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       )}
 
       <div className="space-y-3">
+        {/* Capture source preset */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <AppWindow className="h-4 w-4 text-gray-600" />
+            <Label htmlFor="capture-source" className="text-sm font-medium text-gray-700">
+              Capture source
+            </Label>
+          </div>
+          <Select
+            value={captureSource}
+            onValueChange={handleCaptureSourceChange}
+            disabled={disabled}
+          >
+            <SelectTrigger id="capture-source" className="w-full">
+              <SelectValue placeholder="Select capture source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="both">Mic + System</SelectItem>
+              <SelectItem value="mic">Microphone only</SelectItem>
+              <SelectItem value="system">System audio only</SelectItem>
+              {appCaptureSupported && (
+                <SelectItem value="app">Specific app…</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+          {captureSource === 'mic' && (
+            <p className="text-xs text-gray-500">Records only your microphone — system audio is muted.</p>
+          )}
+          {captureSource === 'system' && (
+            <p className="text-xs text-gray-500">Records only system audio — your microphone is muted.</p>
+          )}
+
+          {/* Per-app picker (Windows process loopback) */}
+          {captureSource === 'app' && appCaptureSupported && (
+            <div className="space-y-1 pl-2 border-l-2 border-gray-200">
+              <Select
+                value={selectedDevices.capturePid != null ? String(selectedDevices.capturePid) : ''}
+                onValueChange={handleAppChange}
+                disabled={disabled || loadingProcesses}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={loadingProcesses ? 'Loading apps…' : 'Select an app'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {audioProcesses.map((proc) => (
+                    <SelectItem key={proc.pid} value={String(proc.pid)}>
+                      {proc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {audioProcesses.length === 0 && !loadingProcesses && (
+                <p className="text-xs text-gray-500">
+                  No apps are currently producing audio. Start a call or media playback, then refresh.
+                </p>
+              )}
+              <p className="text-xs text-gray-500">
+                Captures <strong>all audio from that app</strong> — a browser captures every tab of that browser, not just one meeting tab. Requires Windows 10 build 20348+.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Microphone Selection */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">

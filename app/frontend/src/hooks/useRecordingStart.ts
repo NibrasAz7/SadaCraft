@@ -4,7 +4,7 @@ import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateContext';
-import { recordingService } from '@/services/recordingService';
+import { recordingService, DEVICE_DISABLED } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import {
@@ -19,6 +19,32 @@ const TRANSCRIPTION_RUNTIME_USER_MESSAGE = 'Speech recognition could not initial
 
 const isTranscriptionRuntimeStartError = (error: unknown) =>
   String(error) === TRANSCRIPTION_RUNTIME_START_ERROR_CODE;
+
+/**
+ * One-shot per-app capture override set by the meeting-detected toast: record
+ * this start with mic + process-loopback of the detected app's PID, then
+ * forget it. Stored in sessionStorage so it survives the off-home navigation
+ * the toast performs before the start actually fires.
+ */
+const PENDING_MEETING_CAPTURE_KEY = 'sadacraft_pending_meeting_capture';
+
+interface PendingMeetingCapture {
+  pid: number;
+  appName?: string;
+}
+
+function consumePendingMeetingCapture(): PendingMeetingCapture | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(PENDING_MEETING_CAPTURE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(PENDING_MEETING_CAPTURE_KEY);
+    const parsed = JSON.parse(raw) as PendingMeetingCapture;
+    return typeof parsed?.pid === 'number' && parsed.pid > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 interface UseRecordingStartReturn {
   handleRecordingStart: () => Promise<void>;
@@ -55,6 +81,27 @@ export function useRecordingStart(
   const { setIsMeetingActive } = useSidebar();
   const { selectedDevices } = useConfig();
   const { setStatus } = useRecordingState();
+
+  /**
+   * Resolve the effective (mic, system, capturePid) triple for a start.
+   * Applies the capture-source preset (Mic only / System only send the
+   * DEVICE_DISABLED sentinel so the backend skips that stream entirely) and
+   * consumes any one-shot per-app override from the meeting-detected toast.
+   */
+  const buildRecordingArgs = useCallback(() => {
+    const pendingCapture = consumePendingMeetingCapture();
+    const captureSource = selectedDevices?.captureSource ?? 'both';
+
+    const micDeviceName =
+      captureSource === 'system' ? DEVICE_DISABLED : selectedDevices?.micDevice || null;
+    const systemDeviceName =
+      captureSource === 'mic' ? DEVICE_DISABLED : selectedDevices?.systemDevice || null;
+    const capturePid =
+      pendingCapture?.pid ??
+      (captureSource === 'app' ? selectedDevices?.capturePid ?? null : null);
+
+    return { micDeviceName, systemDeviceName, capturePid };
+  }, [selectedDevices]);
 
   // Generate meeting title with timestamp
   const generateMeetingTitle = useCallback(() => {
@@ -157,10 +204,12 @@ export function useRecordingStart(
 
       // Start the actual backend recording
       console.log('Starting backend recording with meeting:', randomTitle);
+      const { micDeviceName, systemDeviceName, capturePid } = buildRecordingArgs();
       await recordingService.startRecordingWithDevices(
-        selectedDevices?.micDevice || null,
-        selectedDevices?.systemDevice || null,
-        randomTitle
+        micDeviceName,
+        systemDeviceName,
+        randomTitle,
+        capturePid
       );
       console.log('Backend recording started successfully');
 
@@ -205,7 +254,7 @@ export function useRecordingStart(
     } finally {
       isStartingRef.current = false;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkModelReady, checkIfModelDownloading, selectedDevices, showModal, setStatus]);
+  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkModelReady, checkIfModelDownloading, selectedDevices, showModal, setStatus, buildRecordingArgs]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -249,10 +298,12 @@ export function useRecordingStart(
             setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
             console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle);
+            const { micDeviceName, systemDeviceName, capturePid } = buildRecordingArgs();
             const result = await recordingService.startRecordingWithDevices(
-              selectedDevices?.micDevice || null,
-              selectedDevices?.systemDevice || null,
-              generatedMeetingTitle
+              micDeviceName,
+              systemDeviceName,
+              generatedMeetingTitle,
+              capturePid
             );
             console.log('Auto-start backend recording result:', result);
 
@@ -303,6 +354,7 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    buildRecordingArgs,
   ]);
 
   // Listen for direct recording trigger from sidebar when already on home page
@@ -347,10 +399,12 @@ export function useRecordingStart(
         setStatus(RecordingStatus.STARTING, 'Initializing recording...');
 
         console.log('Starting backend recording with meeting:', generatedMeetingTitle);
+        const { micDeviceName, systemDeviceName, capturePid } = buildRecordingArgs();
         const result = await recordingService.startRecordingWithDevices(
-          selectedDevices?.micDevice || null,
-          selectedDevices?.systemDevice || null,
-          generatedMeetingTitle
+          micDeviceName,
+          systemDeviceName,
+          generatedMeetingTitle,
+          capturePid
         );
         console.log('Backend recording result:', result);
 
@@ -403,6 +457,7 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    buildRecordingArgs,
   ]);
 
   return {

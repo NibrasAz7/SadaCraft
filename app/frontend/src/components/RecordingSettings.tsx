@@ -32,7 +32,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   const [saving, setSaving] = useState(false);
   const [showRecordingNotification, setShowRecordingNotification] = useState(true);
   const { isRecording } = useRecordingState();
-  const { setSelectedDevices } = useConfig();
+  const { setSelectedDevices, selectedDevices } = useConfig();
 
   // Load recording preferences on component mount
   useEffect(() => {
@@ -257,6 +257,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
           <div className="border rounded-lg p-4 bg-gray-50">
             <DeviceSelection
               selectedDevices={{
+                ...selectedDevices,
                 micDevice: preferences.preferred_mic_device,
                 systemDevice: preferences.preferred_system_device
               }}
