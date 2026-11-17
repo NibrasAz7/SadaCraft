@@ -122,7 +122,7 @@ From Harness² (`research/oss/google-harness2`, Apache-2.0, arXiv 2610.14224 —
 **Ops**
 - ✅ Elevated deploy DONE: rebuilt `sadacam.dll` → `C:\ProgramData\SadaCraft\` + FrameServer restart (UAC approved); verified end-to-end — ffmpeg captured real frames + "SADACRAFT" name-card through the consumer path
 - ⏳ CUDA 13.4.1: installer downloaded + hash-verified, GUI wizard launched but closed before completing — still on CUDA 13.0 (`V13.0.88`). Vulkan path is the working GPU route (`build-vulkan.cmd` / `dev-vulkan.cmd`)
-- ⏳ Release build: `app\build-release-vulkan.cmd` → NSIS installer (Vulkan features)
+- ✅ Release build DONE: `app\build-release-vulkan.cmd` → `C:\sv\release\bundle\nsis\SadaCraft_0.4.1_x64-setup.exe` (56 MB, Vulkan, unsigned — `DIGICERT_KEYPAIR_ALIAS` unset). Fixed en route: `src/bin/common/mod.rs` looked like a bin target to the bundler → moved to `src/common/` + `#[path]` mods. `createUpdaterArtifacts` set false — updater pubkey is still Meetily's and no `TAURI_SIGNING_PRIVATE_KEY` exists, so artifact signing always failed the build's last step
 - Live verification: real meeting → `You`/`Remote-N` chips; self-improve → `summary_lessons.json`; capture-source picker (mic-only / system-only / per-app) during a live call; bookmarks during a live recording; segmentation + teleprompter on a real camera feed
 
 **Repo/polish gaps**
