@@ -5,6 +5,7 @@
 //! Implemented protocol subset: `initialize`, `ping`, `tools/list`,
 //! `tools/call`; `notifications/*` are ignored, stdin EOF exits.
 
+#[path = "../common/mod.rs"]
 mod common;
 
 use anyhow::Result;

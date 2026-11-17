@@ -6,6 +6,7 @@
 //!   sadacraft-cli meetings summary <id>
 //!   sadacraft-cli meetings export <id> --format md|docx|pdf [--out <path>]
 
+#[path = "../common/mod.rs"]
 mod common;
 
 use anyhow::{bail, Context, Result};
